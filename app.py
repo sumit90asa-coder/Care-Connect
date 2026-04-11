@@ -27,16 +27,16 @@ if not db_url:
     raise Exception("DATABASE_URL not found")
 
 parsed = urlparse(db_url)
-
-db = mysql.connector.connect(
-    host=parsed.hostname,
-    user=parsed.username,
-    password=parsed.password,
-    database=parsed.path.replace("/", ""),
-    port=parsed.port
+conn = mysql.connector.connect(
+    host=os.getenv("MYSQLHOST"),
+    user=os.getenv("MYSQLUSER"),
+    password=os.getenv("MYSQLPASSWORD"),
+    database=os.getenv("MYSQLDATABASE"),
+    port=int(os.getenv("MYSQLPORT"))
 )
 
-cursor = db.cursor()
+
+cursor = conn.cursor()
 
 # create table if not present
 cursor.execute("""
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 """)
-db.commit()
+conn.commit()
 
 
 @app.route("/")
@@ -83,7 +83,7 @@ def register():
             gender, dob, mobile, email, password
         ))
 
-        db.commit()
+        conn.commit()
         return redirect("/login")
 
     return render_template("register.html")
