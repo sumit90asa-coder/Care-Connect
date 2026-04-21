@@ -7,7 +7,7 @@ from groq import Groq
 from urllib.parse import urlparse
 import random
 
-load_dotenv()
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 
 # just to check if env is loading (remove later)
 print(os.getenv("GROQ_API_KEY"))
@@ -16,10 +16,12 @@ app = Flask(__name__)
 app.secret_key = "careconnect_secret"
 
 # groq client
-client = Groq(
-    api_key=os.getenv("GROQ_API_KEY")
-)
+api_key = os.getenv("GROQ_API_KEY")
 
+if not api_key:
+    raise Exception("❌ GROQ_API_KEY not found. Check your .env file")
+
+client = Groq(api_key=api_key)
 # ---------- DATABASE SETUP ----------
 db_url = os.getenv("DATABASE_URL")
 
@@ -32,7 +34,7 @@ conn = mysql.connector.connect(
     user=os.getenv("MYSQLUSER"),
     password=os.getenv("MYSQLPASSWORD"),
     database=os.getenv("MYSQLDATABASE"),
-    port=int(os.getenv("MYSQLPORT"))
+   port=int(os.getenv("MYSQLPORT", 3306))
 )
 
 
@@ -196,9 +198,8 @@ def get_chatbot_reply(message):
         return response.choices[0].message.content
 
     except Exception as e:
-        print(e)
-        return "Something went wrong. Please try again."
-
+        print("ERROR:", e)
+    return str(e)
 
 @app.route("/chat", methods=["POST"])
 def chat():
