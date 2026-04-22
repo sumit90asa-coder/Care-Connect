@@ -273,7 +273,23 @@ button:active {
 }
 
 .action-btn.secondary {
-    background: #9CA3AF;
+    background: #4A7C8C;
+}
+
+.action-btn:hover {
+    background: #3D6775;
+    color: #FFFFFF;
+}
+
+/* Night mode action buttons */
+body.night-mode .action-btn,
+body.night-mode .action-btn.secondary {
+    background: #2563EB;
+    color: #FFFFFF;
+}
+
+body.night-mode .action-btn:hover {
+    background: #1D4ED8;
 }
 /* PASSWORD FIELD */
 .password-wrapper {
