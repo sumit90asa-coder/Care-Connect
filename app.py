@@ -4,7 +4,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from dotenv import load_dotenv
 from groq import Groq
-from urllib.parse import urlparse
 import random
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
@@ -23,22 +22,15 @@ client = Groq(api_key=api_key)
 # ---------- DATABASE SETUP ----------
 def get_db_connection():
     """
-    Reads MYSQL_URL from Railway environment variables.
-    Format: mysql://user:password@host:port/dbname
+    Uses individual Railway MySQL environment variables:
+    MYSQLHOST, MYSQLUSER, MYSQLPASSWORD, MYSQLDATABASE, MYSQLPORT
     """
-    url = os.getenv("MYSQL_URL")
-
-    if not url:
-        raise Exception("❌ MYSQL_URL not found. Set it in Railway environment variables.")
-
-    parsed = urlparse(url)
-
     return mysql.connector.connect(
-        host=parsed.hostname,
-        user=parsed.username,
-        password=parsed.password,
-        database=parsed.path.lstrip('/'),
-        port=parsed.port or 3306,
+        host=os.getenv("MYSQLHOST"),
+        user=os.getenv("MYSQLUSER"),
+        password=os.getenv("MYSQLPASSWORD"),
+        database=os.getenv("MYSQLDATABASE"),
+        port=int(os.getenv("MYSQLPORT", 3306)),
         autocommit=True,
         connection_timeout=30
     )
