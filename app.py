@@ -38,24 +38,28 @@ def get_db_connection():
 
 def init_db():
     """Create tables if they don't exist. Called once at startup."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id          INT AUTO_INCREMENT PRIMARY KEY,
-            nationality VARCHAR(50),
-            initial     VARCHAR(10),
-            full_name   VARCHAR(100),
-            gender      VARCHAR(20),
-            date_of_birth DATE,
-            mobile      VARCHAR(20),
-            email       VARCHAR(100) UNIQUE,
-            password    VARCHAR(255),
-            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cursor.close()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id          INT AUTO_INCREMENT PRIMARY KEY,
+                nationality VARCHAR(50),
+                initial     VARCHAR(10),
+                full_name   VARCHAR(100),
+                gender      VARCHAR(20),
+                date_of_birth DATE,
+                mobile      VARCHAR(20),
+                email       VARCHAR(100) UNIQUE,
+                password    VARCHAR(255),
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.close()
+        conn.close()
+        print("✅ Database initialized successfully.")
+    except Exception as e:
+        print(f"⚠️ init_db warning: {e}")
 
 
 # Run DB init at startup
@@ -63,6 +67,10 @@ init_db()
 
 
 # ---------- ROUTES ----------
+@app.route("/health")
+def health():
+    return "OK", 200
+
 @app.route("/")
 def home():
     return redirect("/login")
