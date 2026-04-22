@@ -9,84 +9,110 @@ import random
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 
-# just to check if env is loading (remove later)
-print(os.getenv("GROQ_API_KEY"))
-
 app = Flask(__name__)
-app.secret_key = "careconnect_secret"
+app.secret_key = os.getenv("SECRET_KEY", "careconnect_secret")
 
-# groq client
+# ---------- GROQ CLIENT ----------
 api_key = os.getenv("GROQ_API_KEY")
-
 if not api_key:
-    raise Exception("❌ GROQ_API_KEY not found. Check your .env file")
+    raise Exception("❌ GROQ_API_KEY not found. Check your .env file or Railway variables.")
 
 client = Groq(api_key=api_key)
+
+
 # ---------- DATABASE SETUP ----------
-db_url = os.getenv("DATABASE_URL")
+def get_db_connection():
+    """
+    Reads MYSQL_URL from Railway environment variables.
+    Format: mysql://user:password@host:port/dbname
+    """
+    url = os.getenv("MYSQL_URL")
 
-if not db_url:
-    raise Exception("DATABASE_URL not found")
+    if not url:
+        raise Exception("❌ MYSQL_URL not found. Set it in Railway environment variables.")
 
-parsed = urlparse(db_url)
-conn = mysql.connector.connect(
-    host=os.getenv("MYSQLHOST"),
-    user=os.getenv("MYSQLUSER"),
-    password=os.getenv("MYSQLPASSWORD"),
-    database=os.getenv("MYSQLDATABASE"),
-   port=int(os.getenv("MYSQLPORT", 3306))
-)
+    parsed = urlparse(url)
 
-
-cursor = conn.cursor()
-
-# create table if not present
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    nationality VARCHAR(50),
-    initial VARCHAR(10),
-    full_name VARCHAR(100),
-    gender VARCHAR(20),
-    date_of_birth DATE,
-    mobile VARCHAR(20),
-    email VARCHAR(100) UNIQUE,
-    password VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-""")
-conn.commit()
+    return mysql.connector.connect(
+        host=parsed.hostname,
+        user=parsed.username,
+        password=parsed.password,
+        database=parsed.path.lstrip('/'),
+        port=parsed.port or 3306,
+        autocommit=True,
+        connection_timeout=30
+    )
 
 
+def init_db():
+    """Create tables if they don't exist. Called once at startup."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id          INT AUTO_INCREMENT PRIMARY KEY,
+            nationality VARCHAR(50),
+            initial     VARCHAR(10),
+            full_name   VARCHAR(100),
+            gender      VARCHAR(20),
+            date_of_birth DATE,
+            mobile      VARCHAR(20),
+            email       VARCHAR(100) UNIQUE,
+            password    VARCHAR(255),
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.close()
+    conn.close()
+
+
+# Run DB init at startup
+init_db()
+
+
+# ---------- ROUTES ----------
 @app.route("/")
 def home():
-    return redirect("/register")
+    return redirect("/login")
 
 
 # ---------- REGISTER ----------
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        nationality = request.form.get("nationality")
-        initial = request.form.get("initial")
-        full_name = request.form.get("name")
-        gender = request.form.get("gender")
-        dob = request.form.get("dob")
-        mobile = request.form.get("mobile")
-        email = request.form.get("email")
-        password = generate_password_hash(request.form.get("password"))
+        nationality  = request.form.get("nationality")
+        initial      = request.form.get("initial")
+        full_name    = request.form.get("name")
+        gender       = request.form.get("gender")
+        dob          = request.form.get("dob")
+        mobile       = request.form.get("mobile")
+        email        = request.form.get("email")
+        raw_password = request.form.get("password")
 
-        cursor.execute("""
-            INSERT INTO users
-            (nationality, initial, full_name, gender, date_of_birth, mobile, email, password)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (
-            nationality, initial, full_name,
-            gender, dob, mobile, email, password
-        ))
+        if not all([full_name, email, raw_password]):
+            return render_template("register.html", error="Name, email and password are required.")
 
-        conn.commit()
-        return redirect("/login")
+        hashed_password = generate_password_hash(raw_password)
+
+        try:
+            conn   = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users
+                    (nationality, initial, full_name, gender, date_of_birth, mobile, email, password)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (nationality, initial, full_name, gender, dob, mobile, email, hashed_password))
+            cursor.close()
+            conn.close()
+            return redirect("/login")
+
+        except mysql.connector.IntegrityError:
+            # Duplicate email
+            return render_template("register.html", error="Email already registered. Please login.")
+
+        except Exception as e:
+            print("Register error:", e)
+            return render_template("register.html", error="Something went wrong. Please try again.")
 
     return render_template("register.html")
 
@@ -95,21 +121,30 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form.get("email")
+        email    = request.form.get("email")
         password = request.form.get("password")
 
-        cursor.execute(
-            "SELECT id, full_name, password FROM users WHERE email=%s",
-            (email,)
-        )
-        user = cursor.fetchone()
+        try:
+            conn   = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, full_name, password FROM users WHERE email = %s",
+                (email,)
+            )
+            user = cursor.fetchone()
+            cursor.close()
+            conn.close()
 
-        if user and check_password_hash(user[2], password):
-            session["user_id"] = user[0]
-            session["user_name"] = user[1]
-            return redirect("/dashboard")
+            if user and check_password_hash(user[2], password):
+                session["user_id"]   = user[0]
+                session["user_name"] = user[1]
+                return redirect("/dashboard")
 
-        return "Invalid email or password"
+            return render_template("login.html", error="Invalid email or password.")
+
+        except Exception as e:
+            print("Login error:", e)
+            return render_template("login.html", error="Something went wrong. Please try again.")
 
     return render_template("login.html")
 
@@ -120,27 +155,39 @@ def dashboard():
     if "user_id" not in session:
         return redirect("/login")
 
-    cursor.execute("""
-        SELECT nationality, initial, full_name, gender,
-               date_of_birth, mobile, email
-        FROM users WHERE id=%s
-    """, (session["user_id"],))
+    try:
+        conn   = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT nationality, initial, full_name, gender,
+                   date_of_birth, mobile, email
+            FROM users WHERE id = %s
+        """, (session["user_id"],))
+        user = cursor.fetchone()
+        cursor.close()
+        conn.close()
 
-    user = cursor.fetchone()
+        if not user:
+            session.clear()
+            return redirect("/login")
 
-    user_data = {
-        "nationality": user[0],
-        "initial": user[1],
-        "full_name": user[2],
-        "gender": user[3],
-        "date_of_birth": user[4],
-        "mobile": user[5],
-        "email": user[6]
-    }
+        user_data = {
+            "nationality":   user[0],
+            "initial":       user[1],
+            "full_name":     user[2],
+            "gender":        user[3],
+            "date_of_birth": user[4],
+            "mobile":        user[5],
+            "email":         user[6],
+        }
+        return render_template("dashboard.html", user=user_data)
 
-    return render_template("dashboard.html", user=user_data)
+    except Exception as e:
+        print("Dashboard error:", e)
+        return redirect("/login")
 
 
+# ---------- LOGOUT ----------
 @app.route("/logout")
 def logout():
     session.clear()
@@ -165,15 +212,14 @@ def wellness():
         "Spend some time in sunlight.",
         "Talk to someone you trust."
     ]
-
     return render_template("wellness.html", tip=random.choice(tips))
 
 
+# ---------- YOGA ----------
 @app.route("/yoga")
 def yoga():
     if "user_id" not in session:
         return redirect("/login")
-
     return render_template("yoga.html")
 
 
@@ -185,21 +231,23 @@ def get_chatbot_reply(message):
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a friendly wellness assistant. "
-                               "Be supportive and calm. "
-                               "Do not give medical advice."
+                    "content": (
+                        "You are a friendly wellness assistant. "
+                        "Be supportive and calm. "
+                        "Do not give medical advice."
+                    )
                 },
                 {"role": "user", "content": message}
             ],
             temperature=0.6,
             max_tokens=200
         )
-
         return response.choices[0].message.content
 
     except Exception as e:
-        print("ERROR:", e)
-    return str(e)
+        print("Chatbot error:", e)
+        return "Sorry, I'm having trouble responding right now. Please try again."
+
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -207,9 +255,11 @@ def chat():
         return jsonify({"reply": "Please login first."})
 
     data = request.get_json()
-    msg = data.get("message", "")
+    if not data:
+        return jsonify({"reply": "Invalid request."})
 
-    if not msg.strip():
+    msg = data.get("message", "").strip()
+    if not msg:
         return jsonify({"reply": "Say something first."})
 
     return jsonify({"reply": get_chatbot_reply(msg)})
@@ -219,12 +269,10 @@ def chat():
 def chatbot():
     if "user_id" not in session:
         return redirect("/login")
-
     return render_template("chatbot.html")
 
 
+# ---------- RUN ----------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    @app.route("/")
-    def home():
-     return "CareConnect is running 🚀"
+    app.run(host="0.0.0.0", port=port, debug=False)
