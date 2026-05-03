@@ -53,10 +53,9 @@ What makes this stand out:
 - ⚡ **Built fast** — complete full-stack application in 48 hours using AI-assisted development
 
 ```
-📊 Language Breakdown
-████████████████████████████░░░░░░░░░░░░░░░  HTML   52.4%
-██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  CSS    26.0%
-███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  Python 21.5%
+ ![HTML](https://img.shields.io/badge/HTML-52.4%25-E34F26?style=flat-square&logo=html5&logoColor=white)
+![CSS](https://img.shields.io/badge/CSS-26.0%25-1572B6?style=flat-square&logo=css3&logoColor=white)
+![Python](https://img.shields.io/badge/Python-21.5%25-3776AB?style=flat-square&logo=python&logoColor=white)
 ```
 
 ---
